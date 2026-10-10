@@ -1,0 +1,420 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "ABO | Unlock",
+    LoadingTitle = "กำลังโหลดระบบ...",
+    LoadingSubtitle = "สคริปต์โดย ABO HUB SCRIPT V1 | สร้างเพื่อความสนุกเท่านั้น",
+    ConfigurationSaving = {
+        Enabled = false,
+        FolderName = nil,
+        FileName = "ABOUnlockHub"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "noinvite",
+        RememberJoins = true
+    },
+    KeySystem = true,
+    KeySettings = {
+        Title = "ระบบใส่คีย์ | ABO | Unlock",
+        Subtitle = "สคริปต์โดย ABO HUB SCRIPT V1",
+        Note = "สุ่มคีย์ 9 หลักจากระบบ APIโดยลิ้งนี้\nhttps://abohub-iwjgrsf7.manus.space",
+        FileName = "ABOUnlockKey",
+        SaveKey = true,
+        GrabKeyFromSite = true,
+        Key = {"https://abohub-iwjgrsf7.manus.space"}
+    }
+})
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Camera = Workspace.CurrentCamera
+
+local Tab1 = Window:CreateTab("ต่อสู้และมองเห็น", 4483362458)
+
+local AimbotEnabled = false
+local AimMode = "ล็อกสมูท"
+local AimDistance = 300
+local currentLockedTarget = nil
+
+Tab1:CreateSection("ระบบล็อกเป้า (Aimbot)")
+
+Tab1:CreateToggle({
+    Name = "เปิดระบบล็อกเป้า (Aimbot)",
+    CurrentValue = false,
+    Callback = function(Value)
+        AimbotEnabled = Value
+    end,
+})
+
+Tab1:CreateDropdown({
+    Name = "โหมดการล็อกเป้า",
+    Options = {"ล็อกติด", "ล็อกสมูท"},
+    CurrentOption = "ล็อกสมูท",
+    Callback = function(Option)
+        AimMode = Option
+    end,
+})
+
+Tab1:CreateSlider({
+    Name = "ระยะล็อกเป้า (เมตร)",
+    Range = {10, 500},
+    Increment = 5,
+    CurrentValue = 300,
+    Callback = function(Value)
+        AimDistance = Value
+    end,
+})
+
+Tab1:CreateSection("ระบบกระสุนพิเศษ")
+
+local SilentAimEnabled = false
+Tab1:CreateToggle({
+    Name = "กระสุนตรง (Silent Aim)",
+    CurrentValue = false,
+    Callback = function(Value)
+        SilentAimEnabled = Value
+    end,
+})
+
+local HomingBulletEnabled = false
+Tab1:CreateToggle({
+    Name = "กระสุนโค้งหาศัตรู (Homing Bullets)",
+    CurrentValue = false,
+    Callback = function(Value)
+        HomingBulletEnabled = Value
+    end,
+})
+
+local function GetClosestTarget()
+    local closestTarget = nil
+    local shortestDist = math.huge
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local isEnemy = true
+            if LocalPlayer.Team and player.Team then
+                if LocalPlayer.Team == player.Team then
+                    isEnemy = false
+                end
+            end
+
+            if isEnemy and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+                local targetPart = player.Character:FindFirstChild("Head") or player.Character:FindFirstChild("HumanoidRootPart")
+                
+                if targetPart then
+                    local vector, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                    
+                    if onScreen then
+                        local screenDist = (Vector2.new(vector.X, vector.Y) - screenCenter).Magnitude
+                        local worldDist = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and (LocalPlayer.Character.HumanoidRootPart.Position - targetPart.Position).Magnitude) or 999
+                        
+                        if worldDist <= AimDistance and screenDist < shortestDist then
+                            shortestDist = screenDist
+                            closestTarget = targetPart
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return closestTarget
+end
+
+RunService.RenderStepped:Connect(function()
+    pcall(function()
+        currentLockedTarget = GetClosestTarget()
+        
+        if AimbotEnabled and currentLockedTarget and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local targetCFrame = CFrame.new(Camera.CFrame.Position, currentLockedTarget.Position)
+            
+            if AimMode == "ล็อกติด" then
+                Camera.CFrame = targetCFrame
+            else
+                Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 0.3)
+            end
+        end
+        
+        if HomingBulletEnabled and currentLockedTarget and LocalPlayer.Character then
+            for _, obj in pairs(Workspace:GetChildren()) do
+                if obj:IsA("BasePart") and not obj.Anchored and obj.Size.Magnitude < 4 then
+                    local dist = (obj.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
+                    if dist < 30 then
+                        local targetPos = currentLockedTarget.Position
+                        local direction = (targetPos - obj.Position).Unit
+                        obj.AssemblyLinearVelocity = direction * 350
+                        obj.CFrame = CFrame.new(obj.Position, targetPos)
+                    end
+                end
+            end
+        end
+    end)
+end)
+
+pcall(function()
+    local oldIndex
+    oldIndex = hookmetamethod(game, "__namecall", function(self, ...)
+        local method = getnamecallmethod()
+        local args = {...}
+        
+        if SilentAimEnabled and (method == "Raycast" or method == "FindPartOnRay" or method == "FindPartOnRayWithIgnoreList") then
+            if currentLockedTarget then
+                local origin = args[1]
+                if typeof(origin) == "Vector3" then
+                    local newDir = (currentLockedTarget.Position - origin).Unit * 1000
+                    args[2] = newDir
+                    return oldIndex(self, unpack(args))
+                end
+            end
+        end
+        return oldIndex(self, ...)
+    end)
+end)
+
+Tab1:CreateSection("ระบบมองทะลุ (ESP)")
+
+local ESPEnabled = false
+local ESPBoxEnabled = true
+local ESPNameEnabled = true
+local ESPHealthEnabled = true
+
+local espDrawings = {}
+
+_G.ESPNameColor = Color3.fromRGB(255, 255, 255)
+_G.ESPHealthColor = Color3.fromRGB(0, 255, 0)
+_G.ESPBoxColor = Color3.fromRGB(0, 0, 0)
+
+Tab1:CreateToggle({
+    Name = "เปิด ESP มองทะลุ",
+    CurrentValue = false,
+    Callback = function(Value)
+        ESPEnabled = Value
+        if not Value then
+            for _, drawings in pairs(espDrawings) do
+                if drawings.Name then drawings.Name:Remove() end
+                if drawings.Health then drawings.Health:Remove() end
+                if drawings.Box then drawings.Box:Remove() end
+            end
+            espDrawings = {}
+        end
+    end,
+})
+
+Tab1:CreateToggle({
+    Name = "แสดงกรอบล้อมตัวคน (Box)",
+    CurrentValue = true,
+    Callback = function(Value)
+        ESPBoxEnabled = Value
+    end,
+})
+
+Tab1:CreateToggle({
+    Name = "แสดงชื่อผู้เล่น (ด้านบน)",
+    CurrentValue = true,
+    Callback = function(Value)
+        ESPNameEnabled = Value
+    end,
+})
+
+Tab1:CreateToggle({
+    Name = "แสดงเลือดผู้เล่น (ด้านล่าง)",
+    CurrentValue = true,
+    Callback = function(Value)
+        ESPHealthEnabled = Value
+    end,
+})
+
+Tab1:CreateColorPicker({
+    Name = "ปรับสีชื่อ",
+    Color = Color3.fromRGB(255, 255, 255),
+    Callback = function(Value)
+        _G.ESPNameColor = Value
+    end
+})
+
+Tab1:CreateColorPicker({
+    Name = "ปรับสีกล่อง (Box)",
+    Color = Color3.fromRGB(0, 0, 0),
+    Callback = function(Value)
+        _G.ESPBoxColor = Value
+    end
+})
+
+Tab1:CreateColorPicker({
+    Name = "ปรับสีเลือด",
+    Color = Color3.fromRGB(0, 255, 0),
+    Callback = function(Value)
+        _G.ESPHealthColor = Value
+    end
+})
+
+Players.PlayerRemoving:Connect(function(player)
+    if espDrawings[player] then
+        if espDrawings[player].Name then espDrawings[player].Name:Remove() end
+        if espDrawings[player].Health then espDrawings[player].Health:Remove() end
+        if espDrawings[player].Box then espDrawings[player].Box:Remove() end
+        espDrawings[player] = nil
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    pcall(function()
+        if ESPEnabled then
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") then
+                    local char = player.Character
+                    local rootPart = char.HumanoidRootPart
+                    local humanoid = char.Humanoid
+                    local _, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
+                    
+                    if onScreen then
+                        local dist = math.floor((Camera.CFrame.Position - rootPart.Position).Magnitude)
+                        local health = math.floor(humanoid.Health)
+                        local maxHealth = math.floor(humanoid.MaxHealth)
+                        
+                        if not espDrawings[player] then
+                            local nameText = Drawing.new("Text")
+                            nameText.Center = true
+                            nameText.Outline = true
+                            nameText.Font = Drawing.Fonts.UI
+                            nameText.Size = 16
+
+                            local healthText = Drawing.new("Text")
+                            healthText.Center = true
+                            healthText.Outline = true
+                            healthText.Font = Drawing.Fonts.UI
+                            healthText.Size = 14
+
+                            local box = Drawing.new("Square")
+                            box.Thickness = 1
+                            box.Filled = false
+
+                            espDrawings[player] = {Name = nameText, Health = healthText, Box = box}
+                        end
+                        
+                        local drawings = espDrawings[player]
+                        
+                        local cf, size = char:GetBoundingBox()
+                        local topPos, topOnScreen = Camera:WorldToViewportPoint((cf * CFrame.new(0, size.Y / 2, 0)).Position)
+                        local bottomPos, bottomOnScreen = Camera:WorldToViewportPoint((cf * CFrame.new(0, -size.Y / 2, 0)).Position)
+                        
+                        if topOnScreen or bottomOnScreen then
+                            local height = math.abs(topPos.Y - bottomPos.Y)
+                            local width = height / 2
+
+                            if ESPNameEnabled then
+                                drawings.Name.Text = string.format("ชื่อ: %s [%dm]", player.Name, dist)
+                                drawings.Name.Color = _G.ESPNameColor
+                                drawings.Name.Position = Vector2.new(topPos.X, topPos.Y - 20)
+                                drawings.Name.Visible = true
+                            else
+                                drawings.Name.Visible = false
+                            end
+
+                            if ESPBoxEnabled then
+                                drawings.Box.Size = Vector2.new(width, height)
+                                drawings.Box.Position = Vector2.new(topPos.X - width / 2, topPos.Y)
+                                drawings.Box.Color = _G.ESPBoxColor
+                                drawings.Box.Visible = true
+                            else
+                                drawings.Box.Visible = false
+                            end
+
+                            if ESPHealthEnabled then
+                                drawings.Health.Text = string.format("เลือด: %d/%d", health, maxHealth)
+                                drawings.Health.Color = _G.ESPHealthColor
+                                drawings.Health.Position = Vector2.new(bottomPos.X, bottomPos.Y + 5)
+                                drawings.Health.Visible = true
+                            else
+                                drawings.Health.Visible = false
+                            end
+                        else
+                            drawings.Name.Visible = false
+                            drawings.Box.Visible = false
+                            drawings.Health.Visible = false
+                        end
+                    else
+                        if espDrawings[player] then
+                            espDrawings[player].Name.Visible = false
+                            espDrawings[player].Box.Visible = false
+                            espDrawings[player].Health.Visible = false
+                        end
+                    end
+                else
+                    if espDrawings[player] then
+                        espDrawings[player].Name.Visible = false
+                        espDrawings[player].Box.Visible = false
+                        espDrawings[player].Health.Visible = false
+                    end
+                end
+            end
+        else
+            for _, drawings in pairs(espDrawings) do
+                if drawings.Name then drawings.Name.Visible = false end
+                if drawings.Box then drawings.Box.Visible = false end
+                if drawings.Health then drawings.Health.Visible = false end
+            end
+        end
+    end)
+end)
+
+local Tab2 = Window:CreateTab("ฟังก์ชันเสริม", 4483362458)
+
+Tab2:CreateSection("การเคลื่อนไหว & เอาตัวรอด")
+
+Tab2:CreateToggle({
+    Name = "วิ่งไว 1.5x",
+    CurrentValue = false,
+    Callback = function(Value)
+        local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            if Value then
+                humanoid.WalkSpeed = 16 * 1.5
+            else
+                humanoid.WalkSpeed = 16
+            end
+        end
+    end,
+})
+
+local InfJumpEnabled = false
+Tab2:CreateToggle({
+    Name = "กระโดดกลางอากาศ (Infinite Jump)",
+    CurrentValue = false,
+    Callback = function(Value)
+        InfJumpEnabled = Value
+    end,
+})
+
+UserInputService.JumpRequest:Connect(function()
+    if InfJumpEnabled and LocalPlayer.Character then
+        local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+        if humanoid then
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+        end
+    end
+end)
+
+Tab2:CreateSection("สิ่งแวดล้อม (ทำให้แมพสว่างเห็นง่าย)")
+
+Tab2:CreateSlider({
+    Name = "ปรับแสงแมพสว่าง (%) [100% = ปกติ, 210% = สว่างสุด]",
+    Range = {0, 210},
+    Increment = 5,
+    CurrentValue = 100,
+    Callback = function(Value)
+        local factor = Value / 100
+        Lighting.Brightness = 3 * factor
+        Lighting.ClockTime = 14
+        Lighting.GlobalShadows = (Value <= 100)
+        local ambientValue = math.clamp(255 * factor, 0, 255)
+        Lighting.OutdoorAmbient = Color3.fromRGB(ambientValue, ambientValue, ambientValue)
+    end,
+})
+
+Rayfield:LoadConfiguration()
